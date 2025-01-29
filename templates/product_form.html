@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Formulario Producto{% endblock %}
+{% block content %}
+  <div class="mt-4">
+    {% if action == 'new' %}
+      <h2>Crear Nuevo Producto</h2>
+      <form method="POST" class="row g-3 mt-3">
+    {% elif action == 'edit' %}
+      <h2>Editar Producto</h2>
+      <form method="POST" class="row g-3 mt-3">
+    {% endif %}
+    
+      <div class="col-md-4">
+        <label class="form-label">Nombre</label>
+        <input type="text" name="nombre" value="{{ product.nombre if product else '' }}" required class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Marca</label>
+        <input type="text" name="marca" value="{{ product.marca if product else '' }}" class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Código</label>
+        <input type="text" name="codigo" value="{{ product.codigo if product else '' }}" class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Precio Base</label>
+        <input type="number" step="any" name="precio_base" value="{{ product.precio_base if product else '' }}" required class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">% Impuestos</label>
+        <input type="number" step="any" name="porcentaje_impuestos" value="{{ product.porcentaje_impuestos if product else '0.0' }}" class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">% Ganancia</label>
+        <input type="number" step="any" name="porcentaje_ganancia" value="{{ product.porcentaje_ganancia if product else '0.0' }}" class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Potencia (W)</label>
+        <input type="number" step="any" name="potencia" value="{{ product.potencia if product else '0.0' }}" class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Voltaje Máximo (V)</label>
+        <input type="number" step="any" name="voltaje_maximo" value="{{ product.voltaje_maximo if product else '0.0' }}" class="form-control">
+      </div>
+      
+      <div class="col-md-4">
+        <label class="form-label">String Count</label>
+        <input type="number" name="string_count" value="{{ product.string_count if product else '0' }}" class="form-control">
+      </div>
+      
+
+      <div class="col-md-4">
+        <label class="form-label">Amperaje Máximo (A)</label>
+        <input type="number" step="any" name="amperaje_maximo" value="{{ product.amperaje_maximo if product else '0.0' }}" class="form-control">
+      </div>
+
+      <div class="col-md-4">
+        <label class="form-label">Tipo</label>
+        <select name="tipo" class="form-select">
+          <option value="inversor" {% if product and product.tipo == 'inversor' %}selected{% endif %}>Inversor</option>
+          <option value="panel" {% if product and product.tipo == 'panel' %}selected{% endif %}>Panel</option>
+          <option value="protecciones_cc" {% if product and product.tipo == 'protecciones_cc' %}selected{% endif %}>Protecciones CC</option>
+          <option value="protecciones_ca" {% if product and product.tipo == 'protecciones_ca' %}selected{% endif %}>Protecciones CA</option>
+          <option value="estructura" {% if product and product.tipo == 'estructura' %}selected{% endif %}>Estructura</option>
+          <option value="cable" {% if product and product.tipo == 'cable' %}selected{% endif %}>Cable</option>
+          <option value="fichas" {% if product and product.tipo == 'fichas' %}selected{% endif %}>Fichas</option>
+        </select>
+      </div>
+
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

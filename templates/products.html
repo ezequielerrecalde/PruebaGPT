@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Productos - Proyecto Solar{% endblock %}
+{% block content %}
+  <div class="mt-4">
+    <h2>Listado de Productos</h2>
+    <p>
+      <a href="{{ url_for('new_product') }}" class="btn btn-primary">Crear nuevo Producto</a>
+    </p>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Marca</th>
+            <th>Código</th>
+            <th>Tipo</th>
+            <th>Potencia (W)</th>
+            <th>Voltaje Max. (V)</th>
+            <th>Amperaje Max. (A)</th>
+            <th>String Count</th>
+            <th>Precio Base</th>
+            <th>Precio Final</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in products %}
+          <tr>
+            <td>{{ product.id }}</td>
+            <td>{{ product.nombre }}</td>
+            <td>{{ product.marca }}</td>
+            <td>{{ product.codigo }}</td>
+            <td>{{ product.tipo }}</td>
+            <td>{{ product.potencia }}</td>
+            <td>{{ product.voltaje_maximo }}</td>
+            <td>{{ product.amperaje_maximo }}</td>
+            <td>{{ product.string_count }}</td>
+            <td>${{ "%.2f"|format(product.precio_base) }}</td>
+            <td>${{ "%.2f"|format(product.precio_final) }}</td>
+            <td>
+              <a href="{{ url_for('edit_product', product_id=product.id) }}" class="btn btn-warning btn-sm">Editar</a>
+              <form action="{{ url_for('delete_product', product_id=product.id) }}" method="POST" style="display:inline">
+                <button type="submit" class="btn btn-danger btn-sm">Borrar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Registro - Proyecto Solar{% endblock %}
+{% block content %}
+  <div class="mt-4">
+    <h2>Registrar nuevo usuario</h2>
+    <form method="POST" class="row g-3 mt-3">
+      <div class="col-md-6">
+        <label class="form-label">Nombre de usuario</label>
+        <input type="text" name="username" class="form-control" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Contraseña</label>
+        <input type="password" name="password" class="form-control" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Rol</label>
+        <select name="role" class="form-select">
+          <option value="user">Usuario (normal)</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-success">Crear cuenta</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

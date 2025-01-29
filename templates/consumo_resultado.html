@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Resultado del Consumo{% endblock %}
+{% block content %}
+  <div class="mt-4">
+    <h2>Resultado del Consumo Anual</h2>
+    <ul class="list-group mb-3">
+      <li class="list-group-item">Total anual: <strong>{{ consumo_anual }} kWh</strong></li>
+      <li class="list-group-item">Promedio mensual: <strong>{{ promedio_mensual }} kWh</strong></li>
+    </ul>
+
+    <h3>Consumos mensuales ingresados:</h3>
+    <div class="row">
+      <div class="col-md-6">
+        <ul class="list-group">
+          {% for c in consumos %}
+            <li class="list-group-item">{{ c }} kWh</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <form action="{{ url_for('armar_presupuesto') }}" method="POST" class="mt-3">
+      <!-- Pasamos el consumo anual y promedio por campos ocultos -->
+      <input type="hidden" name="consumo_anual" value="{{ consumo_anual }}">
+      <input type="hidden" name="promedio_mensual" value="{{ promedio_mensual }}">
+      <button type="submit" class="btn btn-success">Seleccionar Productos</button>
+    </form>
+  </div>
+{% endblock %}

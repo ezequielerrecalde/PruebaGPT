@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Inicio - Proyecto Solar{% endblock %}
+{% block content %}
+  <div class="mt-4">
+    {% if current_user.is_authenticated %}
+      <h1 class="display-5">Bienvenido, {{ current_user.username }}!</h1>
+      <p class="lead">Selecciona una opción del menú superior.</p>
+    {% else %}
+      <h1 class="display-5">Bienvenido al Proyecto Solar</h1>
+      <p class="lead">Por favor, inicia sesión o regístrate.</p>
+
+      <hr>
+      <h3>Iniciar Sesión</h3>
+      <form method="POST" class="row g-3 mt-3">
+        <div class="col-md-6">
+          <label class="form-label">Usuario</label>
+          <input type="text" name="username" class="form-control" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Contraseña</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
