@@ -20,7 +20,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 #################################
-# Flask-Login
+# Flask-Login Login
 #################################
 login_manager = LoginManager()
 login_manager.init_app(app)
