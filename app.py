@@ -9,6 +9,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import LETTER
 from io import BytesIO
+import csv
+import json
 
 app = Flask(__name__)
 app.secret_key = "MI_SECRETO_SUPER_SEGURO"  # Cambia esto en producción
@@ -20,31 +22,28 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 #################################
-# Flask-Login Login
+# Flask-Login
 #################################
 login_manager = LoginManager()
 login_manager.init_app(app)
-login_manager.login_view = 'index'  # Si no está logueado y se requiere login, redirige a 'index'
+login_manager.login_view = 'index'
 
 #################################
 # MODELOS: User y Product
 #################################
 
 class User(UserMixin, db.Model):
-    """
-    Modelo para usuarios, con UserMixin para Flask-Login.
-    """
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), default='user')  # 'admin' o 'user'
+    # Los roles posibles: 'admin', 'user' (único usuario general) o 'instalador'
+    role = db.Column(db.String(20), default='user')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
-
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -58,25 +57,29 @@ class Product(db.Model):
     voltaje_maximo = db.Column(db.Float, nullable=True, default=0.0)
     string_count = db.Column(db.Integer, nullable=True, default=0)
     amperaje_maximo = db.Column(db.Float, nullable=True, default=0.0)
-    # Tipo: inversor, panel, protecciones_cc, protecciones_ca, estructura, cable, fichas...
+    # 'tipo' define la categoría: inversor, panel, protecciones_cc, protecciones_ca, estructura, cable, fichas
     tipo = db.Column(db.String(50), nullable=False)
+    # Campo para almacenar en formato JSON las características específicas según la categoría
+    detalles = db.Column(db.Text, nullable=True, default="{}")
 
     @property
     def precio_final(self):
-        """
-        Calcula el precio final aplicando impuestos y ganancia:
-        precio_base * (1 + %impuestos/100) * (1 + %ganancia/100)
-        """
-        return self.precio_base * (1 + self.porcentaje_impuestos / 100) * (1 + self.porcentaje_ganancia / 100)
+        return self.precio_base * (1 + self.porcentaje_impuestos/100) * (1 + self.porcentaje_ganancia/100)
 
     def __repr__(self):
         return f"<Product {self.nombre} ({self.tipo})>"
 
 #################################
-# Crear la base de datos
+# Crear la base de datos y el usuario admin fijo
 #################################
 with app.app_context():
     db.create_all()
+    admin = User.query.filter_by(username='ezequiel1407').first()
+    if not admin:
+        admin = User(username='ezequiel1407', role='admin')
+        admin.set_password('larenga73')
+        db.session.add(admin)
+        db.session.commit()
 
 #################################
 # Flask-Login Loader
@@ -92,11 +95,10 @@ def load_user(user_id):
 @app.route('/', methods=['GET', 'POST'])
 def index():
     """
-    Página de inicio. Si el usuario no está logueado, se muestra un formulario de login.
-    Si está logueado, se muestra un mensaje de bienvenida y el botón de logout.
+    Página de inicio.
+    Si no se ha iniciado sesión se muestra el formulario de login.
     """
     if request.method == 'POST':
-        # Procesar login
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
@@ -120,22 +122,25 @@ def logout():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     """
-    Permite crear un nuevo usuario. Puedes restringirlo sólo a admins, etc.
+    Permite crear un nuevo usuario.
+    No se permite registrar el rol 'admin' y sólo se permite un usuario general (rol 'user').
     """
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        role = request.form.get('role', 'user')  # por defecto user
+        role = request.form.get('role', 'user')  # Opciones: 'user' o 'instalador'
         if not username or not password:
             flash("Complete todos los campos.", "warning")
             return redirect(url_for('register'))
-
-        # Verificar si ya existe
+        if role == 'admin':
+            flash("No se puede registrar el rol admin.", "danger")
+            return redirect(url_for('register'))
+        if role == 'user' and User.query.filter_by(role='user').first():
+            flash("Ya existe un usuario general registrado.", "danger")
+            return redirect(url_for('register'))
         if User.query.filter_by(username=username).first():
             flash("Ese usuario ya existe.", "danger")
             return redirect(url_for('register'))
-
-        # Crear user
         new_user = User(username=username, role=role)
         new_user.set_password(password)
         db.session.add(new_user)
@@ -145,7 +150,6 @@ def register():
     else:
         return render_template('register.html')
 
-
 #################################
 # Rutas de CRUD para productos
 #################################
@@ -154,22 +158,36 @@ def register():
 @login_required
 def list_products():
     """
-    Listar productos (solo usuarios logueados).
+    Lista los productos agrupados por categoría.
+    Los usuarios 'admin' ven datos completos (incluyendo precio base, % de impuestos y ganancia, y botones CRUD),
+    mientras que los demás ven únicamente los datos técnicos y el precio final.
     """
-    products = Product.query.order_by(Product.id).all()
-    return render_template('products.html', products=products)
+    inversores = Product.query.filter_by(tipo='inversor').all()
+    paneles = Product.query.filter_by(tipo='panel').all()
+    protecciones_cc = Product.query.filter_by(tipo='protecciones_cc').all()
+    protecciones_ca = Product.query.filter_by(tipo='protecciones_ca').all()
+    estructuras = Product.query.filter_by(tipo='estructura').all()
+    cables = Product.query.filter_by(tipo='cable').all()
+    fichas = Product.query.filter_by(tipo='fichas').all()
+    return render_template('products.html',
+                           inversores=inversores,
+                           paneles=paneles,
+                           protecciones_cc=protecciones_cc,
+                           protecciones_ca=protecciones_ca,
+                           estructuras=estructuras,
+                           cables=cables,
+                           fichas=fichas)
 
 @app.route('/products/new', methods=['GET', 'POST'])
 @login_required
 def new_product():
     """
-    Crear un nuevo producto.
-    Solo debería poder hacerlo un usuario con role=admin (por ejemplo).
+    Crea un producto manualmente (formulario clásico).
+    Solo el usuario admin puede acceder a esta opción.
     """
     if current_user.role != 'admin':
         flash("No tienes permiso para crear productos.", "danger")
         return redirect(url_for('list_products'))
-
     if request.method == 'POST':
         try:
             nombre = request.form['nombre']
@@ -183,7 +201,6 @@ def new_product():
             string_count = int(request.form.get('string_count', 0))
             amperaje_maximo = float(request.form.get('amperaje_maximo', 0))
             tipo = request.form['tipo']
-
             p = Product(
                 nombre=nombre,
                 marca=marca,
@@ -195,7 +212,8 @@ def new_product():
                 voltaje_maximo=voltaje_maximo,
                 string_count=string_count,
                 amperaje_maximo=amperaje_maximo,
-                tipo=tipo
+                tipo=tipo,
+                detalles="{}"
             )
             db.session.add(p)
             db.session.commit()
@@ -211,14 +229,13 @@ def new_product():
 @login_required
 def edit_product(product_id):
     """
-    Editar un producto existente. Sólo para admin.
+    Edita un producto existente.
+    Solo el usuario admin tiene permiso para esta acción.
     """
     if current_user.role != 'admin':
         flash("No tienes permiso para editar productos.", "danger")
         return redirect(url_for('list_products'))
-
     product = Product.query.get_or_404(product_id)
-
     if request.method == 'POST':
         try:
             product.nombre = request.form['nombre']
@@ -232,7 +249,6 @@ def edit_product(product_id):
             product.string_count = int(request.form.get('string_count', 0))
             product.amperaje_maximo = float(request.form.get('amperaje_maximo', 0))
             product.tipo = request.form['tipo']
-
             db.session.commit()
             flash("Producto editado exitosamente.", "success")
             return redirect(url_for('list_products'))
@@ -246,12 +262,12 @@ def edit_product(product_id):
 @login_required
 def delete_product(product_id):
     """
-    Borrar un producto. Sólo para admin.
+    Elimina un producto.
+    Solo el usuario admin puede realizar esta acción.
     """
     if current_user.role != 'admin':
         flash("No tienes permiso para eliminar productos.", "danger")
         return redirect(url_for('list_products'))
-
     product = Product.query.get_or_404(product_id)
     try:
         db.session.delete(product)
@@ -261,19 +277,331 @@ def delete_product(product_id):
         flash(f"Error al eliminar el producto: {e}", "danger")
     return redirect(url_for('list_products'))
 
-############################################
-# Rutas para ingreso de consumos
-############################################
+#################################
+# Ruta de carga de productos vía CSV (Excel)
+#################################
+@app.route('/upload_products', methods=['GET', 'POST'])
+@login_required
+def upload_products():
+    """
+    Permite al usuario admin subir un archivo CSV con productos para una categoría específica.
+    Se asignan valores por defecto ("N/A" o 0) en los campos faltantes, y se almacenan los datos
+    específicos en el campo 'detalles' (formato JSON).
+    Además, se ofrece la opción de descargar un CSV de ejemplo.
+    """
+    if current_user.role != 'admin':
+        flash("No tienes permiso para subir productos.", "danger")
+        return redirect(url_for('list_products'))
+    if request.method == 'POST':
+        categoria = request.form.get('categoria')
+        if not categoria:
+            flash("Debes seleccionar una categoría.", "danger")
+            return redirect(url_for('upload_products'))
+        if 'file' not in request.files:
+            flash("No se encontró el archivo.", "danger")
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            flash("No se seleccionó ningún archivo.", "danger")
+            return redirect(request.url)
+        try:
+            file_stream = file.stream.read().decode("utf-8").splitlines()
+            reader = csv.DictReader(file_stream)
+            count = 0
+            for row in reader:
+                if categoria == 'inversor':
+                    marca = row.get('marca', 'N/A')
+                    modelo = row.get('modelo', 'N/A')
+                    tipo_inversor = row.get('tipo_inversor', 'N/A')
+                    potencia_nominal = row.get('potencia_nominal', '0')
+                    tension_entrada_cc = row.get('tension_entrada_cc', '0')
+                    tension_salida_ca = row.get('tension_salida_ca', '0')
+                    regulador_mppt = row.get('regulador_mppt', 'N/A')
+                    corriente_max_por_string = row.get('corriente_max_por_string', '0')
+                    potencia_max_paneles = row.get('potencia_max_paneles', '0')
+                    conectividad = row.get('conectividad', 'N/A')
+                    tipo_proteccion_cc = row.get('tipo_proteccion_cc', 'N/A')
+                    proteccion_cc = row.get('proteccion_cc', 'N/A')
+                    tipo_proteccion_ca = row.get('tipo_proteccion_ca', 'N/A')
+                    proteccion_ca = row.get('proteccion_ca', 'N/A')
+                    try:
+                        precio_base = float(row.get('precio_base', 0))
+                    except:
+                        precio_base = 0.0
+                    try:
+                        porcentaje_impuestos = float(row.get('porcentaje_impuestos', 0))
+                    except:
+                        porcentaje_impuestos = 0.0
+                    try:
+                        porcentaje_ganancia = float(row.get('porcentaje_ganancia', 0))
+                    except:
+                        porcentaje_ganancia = 0.0
+                    product = Product(
+                        nombre=modelo,
+                        marca=marca,
+                        codigo=tipo_inversor,
+                        precio_base=precio_base,
+                        porcentaje_impuestos=porcentaje_impuestos,
+                        porcentaje_ganancia=porcentaje_ganancia,
+                        potencia=float(potencia_nominal) if potencia_nominal else 0.0,
+                        voltaje_maximo=float(tension_salida_ca) if tension_salida_ca else 0.0,
+                        string_count=int(float(corriente_max_por_string)) if corriente_max_por_string else 0,
+                        amperaje_maximo=0.0,
+                        tipo='inversor',
+                        detalles=json.dumps({
+                            "tipo_inversor": tipo_inversor,
+                            "potencia_nominal": potencia_nominal,
+                            "tension_entrada_cc": tension_entrada_cc,
+                            "tension_salida_ca": tension_salida_ca,
+                            "regulador_mppt": regulador_mppt,
+                            "corriente_max_por_string": corriente_max_por_string,
+                            "potencia_max_paneles": potencia_max_paneles,
+                            "conectividad": conectividad,
+                            "tipo_proteccion_cc": tipo_proteccion_cc,
+                            "proteccion_cc": proteccion_cc,
+                            "tipo_proteccion_ca": tipo_proteccion_ca,
+                            "proteccion_ca": proteccion_ca
+                        })
+                    )
+                elif categoria == 'panel':
+                    proveedor = row.get('proveedor', 'N/A')
+                    marca = row.get('marca', 'N/A')
+                    modelo = row.get('modelo', 'N/A')
+                    potencia = row.get('potencia', '0')
+                    voltaje = row.get('voltaje', '0')
+                    tension = row.get('tension', '0')
+                    tipo_panel = row.get('tipo_panel', 'N/A')
+                    try:
+                        precio_base = float(row.get('precio_base', 0))
+                    except:
+                        precio_base = 0.0
+                    try:
+                        porcentaje_ganancia = float(row.get('porcentaje_ganancia', 0))
+                    except:
+                        porcentaje_ganancia = 0.0
+                    product = Product(
+                        nombre=modelo,
+                        marca=marca,
+                        codigo='',
+                        precio_base=precio_base,
+                        porcentaje_impuestos=0.0,
+                        porcentaje_ganancia=porcentaje_ganancia,
+                        potencia=float(potencia) if potencia else 0.0,
+                        voltaje_maximo=float(voltaje) if voltaje else 0.0,
+                        string_count=0,
+                        amperaje_maximo=0.0,
+                        tipo='panel',
+                        detalles=json.dumps({
+                            "proveedor": proveedor,
+                            "potencia": potencia,
+                            "voltaje": voltaje,
+                            "tension": tension,
+                            "tipo_panel": tipo_panel
+                        })
+                    )
+                elif categoria in ['protecciones_cc', 'protecciones_ca']:
+                    marca = row.get('marca', 'N/A')
+                    modelo = row.get('modelo', 'N/A')
+                    proveedor = row.get('proveedor', 'N/A')
+                    try:
+                        precio_base = float(row.get('precio_base', 0))
+                    except:
+                        precio_base = 0.0
+                    try:
+                        porcentaje_ganancia = float(row.get('porcentaje_ganancia', 0))
+                    except:
+                        porcentaje_ganancia = 0.0
+                    ubicacion = row.get('ubicacion', 'N/A')
+                    tension_nominal_operacion = row.get('tension_nominal_operacion', '0')
+                    corriente_descarga_nominal = row.get('corriente_descarga_nominal', '0')
+                    corriente_descarga_maxima = row.get('corriente_descarga_maxima', '0')
+                    tecnologia_proteccion = row.get('tecnologia_proteccion', 'N/A')
+                    clase_proteccion = row.get('clase_proteccion', 'N/A')
+                    indicador_estado = row.get('indicador_estado', 'N/A')
+                    montaje_caja = row.get('montaje_caja', 'N/A')
+                    product = Product(
+                        nombre=modelo,
+                        marca=marca,
+                        codigo='',
+                        precio_base=precio_base,
+                        porcentaje_impuestos=0.0,
+                        porcentaje_ganancia=porcentaje_ganancia,
+                        potencia=0.0,
+                        voltaje_maximo=0.0,
+                        string_count=0,
+                        amperaje_maximo=0.0,
+                        tipo=categoria,
+                        detalles=json.dumps({
+                            "proveedor": proveedor,
+                            "ubicacion": ubicacion,
+                            "tension_nominal_operacion": tension_nominal_operacion,
+                            "corriente_descarga_nominal": corriente_descarga_nominal,
+                            "corriente_descarga_maxima": corriente_descarga_maxima,
+                            "tecnologia_proteccion": tecnologia_proteccion,
+                            "clase_proteccion": clase_proteccion,
+                            "indicador_estado": indicador_estado,
+                            "montaje_caja": montaje_caja
+                        })
+                    )
+                elif categoria == 'estructura':
+                    proveedor = row.get('proveedor', 'N/A')
+                    marca = row.get('marca', 'N/A')
+                    modelo = row.get('modelo', 'N/A')
+                    tipo_estructura = row.get('tipo_estructura', 'N/A')
+                    cantidad_paneles = row.get('cantidad_paneles', '0')
+                    material = row.get('material', 'N/A')
+                    inclinacion = row.get('inclinacion', '0')
+                    try:
+                        precio_base = float(row.get('precio_base', 0))
+                    except:
+                        precio_base = 0.0
+                    try:
+                        porcentaje_ganancia = float(row.get('porcentaje_ganancia', 0))
+                    except:
+                        porcentaje_ganancia = 0.0
+                    product = Product(
+                        nombre=modelo,
+                        marca=marca,
+                        codigo='',
+                        precio_base=precio_base,
+                        porcentaje_impuestos=0.0,
+                        porcentaje_ganancia=porcentaje_ganancia,
+                        potencia=0.0,
+                        voltaje_maximo=0.0,
+                        string_count=0,
+                        amperaje_maximo=0.0,
+                        tipo='estructura',
+                        detalles=json.dumps({
+                            "proveedor": proveedor,
+                            "tipo_estructura": tipo_estructura,
+                            "cantidad_paneles": cantidad_paneles,
+                            "material": material,
+                            "inclinacion": inclinacion
+                        })
+                    )
+                elif categoria == 'cable':
+                    proveedor = row.get('proveedor', 'N/A')
+                    marca = row.get('marca', 'N/A')
+                    modelo = row.get('modelo', 'N/A')
+                    tipo_cable = row.get('tipo_cable', 'N/A')
+                    espesor = row.get('espesor', '0')
+                    tipo_baina = row.get('tipo_baina', 'N/A')
+                    try:
+                        precio_base = float(row.get('precio_base', 0))
+                    except:
+                        precio_base = 0.0
+                    try:
+                        porcentaje_ganancia = float(row.get('porcentaje_ganancia', 0))
+                    except:
+                        porcentaje_ganancia = 0.0
+                    product = Product(
+                        nombre=modelo,
+                        marca=marca,
+                        codigo='',
+                        precio_base=precio_base,
+                        porcentaje_impuestos=0.0,
+                        porcentaje_ganancia=porcentaje_ganancia,
+                        potencia=0.0,
+                        voltaje_maximo=0.0,
+                        string_count=0,
+                        amperaje_maximo=0.0,
+                        tipo='cable',
+                        detalles=json.dumps({
+                            "proveedor": proveedor,
+                            "tipo_cable": tipo_cable,
+                            "espesor": espesor,
+                            "tipo_baina": tipo_baina
+                        })
+                    )
+                elif categoria == 'fichas':
+                    tipo_ficha = row.get('tipo_ficha', 'N/A')
+                    marca = row.get('marca', 'N/A')
+                    modelo = row.get('modelo', 'N/A')
+                    proveedor = row.get('proveedor', 'N/A')
+                    try:
+                        precio_base = float(row.get('precio_base', 0))
+                    except:
+                        precio_base = 0.0
+                    try:
+                        porcentaje_ganancia = float(row.get('porcentaje_ganancia', 0))
+                    except:
+                        porcentaje_ganancia = 0.0
+                    product = Product(
+                        nombre=modelo,
+                        marca=marca,
+                        codigo='',
+                        precio_base=precio_base,
+                        porcentaje_impuestos=0.0,
+                        porcentaje_ganancia=porcentaje_ganancia,
+                        potencia=0.0,
+                        voltaje_maximo=0.0,
+                        string_count=0,
+                        amperaje_maximo=0.0,
+                        tipo='fichas',
+                        detalles=json.dumps({
+                            "tipo_ficha": tipo_ficha,
+                            "proveedor": proveedor
+                        })
+                    )
+                else:
+                    continue
+                db.session.add(product)
+                count += 1
+            db.session.commit()
+            flash(f'Se han cargado {count} productos correctamente.', 'success')
+            return redirect(url_for('list_products'))
+        except Exception as e:
+            flash(f'Error al procesar el archivo: {e}', 'danger')
+            return redirect(request.url)
+    else:
+        return render_template('upload_products.html')
 
+#################################
+# Ruta para descargar archivo CSV de ejemplo
+#################################
+@app.route('/download_sample/<categoria>')
+@login_required
+def download_sample(categoria):
+    if current_user.role != 'admin':
+        flash("No tienes permiso para descargar el ejemplo.", "danger")
+        return redirect(url_for('upload_products'))
+    output = []
+    if categoria == 'inversor':
+        headers = ['marca', 'modelo', 'tipo_inversor', 'potencia_nominal', 'tension_entrada_cc', 'tension_salida_ca', 'regulador_mppt', 'corriente_max_por_string', 'potencia_max_paneles', 'conectividad', 'tipo_proteccion_cc', 'proteccion_cc', 'tipo_proteccion_ca', 'proteccion_ca', 'precio_base', 'porcentaje_impuestos', 'porcentaje_ganancia']
+        example = ['MarcaX', 'ModeloY', 'TipoA', '500', '300', '230', 'Si', '10', '600', 'WiFi', 'Interior', 'Protegido', 'Exterior', 'No', '1000', '15', '20']
+    elif categoria == 'panel':
+        headers = ['proveedor', 'marca', 'modelo', 'potencia', 'voltaje', 'tension', 'tipo_panel', 'precio_base', 'porcentaje_ganancia']
+        example = ['ProveedorZ', 'MarcaP', 'ModeloQ', '250', '40', '35', 'Tipo1', '500', '25']
+    elif categoria in ['protecciones_cc', 'protecciones_ca']:
+        headers = ['marca', 'modelo', 'proveedor', 'precio_base', 'porcentaje_ganancia', 'ubicacion', 'tension_nominal_operacion', 'corriente_descarga_nominal', 'corriente_descarga_maxima', 'tecnologia_proteccion', 'clase_proteccion', 'indicador_estado', 'montaje_caja']
+        example = ['MarcaR', 'ModeloS', 'ProveedorT', '200', '30', 'Tablero', '230', '5', '10', 'MOV', 'TipoII', 'LED', 'Cuadro']
+    elif categoria == 'estructura':
+        headers = ['proveedor', 'marca', 'modelo', 'tipo_estructura', 'cantidad_paneles', 'material', 'inclinacion', 'precio_base', 'porcentaje_ganancia']
+        example = ['ProveedorU', 'MarcaV', 'ModeloW', 'TipoE', '10', 'Aluminio', '30', '800', '20']
+    elif categoria == 'cable':
+        headers = ['proveedor', 'marca', 'modelo', 'tipo_cable', 'espesor', 'tipo_baina', 'precio_base', 'porcentaje_ganancia']
+        example = ['ProveedorX', 'MarcaY', 'ModeloZ', 'TipoC', '2.5', 'Aislado', '100', '15']
+    elif categoria == 'fichas':
+        headers = ['tipo_ficha', 'marca', 'modelo', 'proveedor', 'precio_base', 'porcentaje_ganancia']
+        example = ['TipoF', 'MarcaG', 'ModeloH', 'ProveedorI', '50', '10']
+    else:
+        flash("Categoría desconocida.", "danger")
+        return redirect(url_for('upload_products'))
+    output.append(','.join(headers))
+    output.append(','.join(example))
+    csv_data = "\n".join(output)
+    return send_file(BytesIO(csv_data.encode('utf-8')),
+                     as_attachment=True,
+                     download_name=f'sample_{categoria}.csv',
+                     mimetype='text/csv')
+
+#################################
+# Rutas para ingreso de consumos
+#################################
 @app.route('/consumo', methods=['GET', 'POST'])
 @login_required
 def consumo():
-    """
-    Muestra un formulario para ingresar 12 meses de consumo.
-    Sólo usuarios logueados.
-    """
     if request.method == 'POST':
-        # Tomamos 12 valores de consumo
         consumos = []
         for i in range(1, 13):
             try:
@@ -281,13 +609,8 @@ def consumo():
             except:
                 val = 0
             consumos.append(val)
-
-        # Sumamos todo el consumo anual
         consumo_anual = sum(consumos)
-        # Calculamos promedio mensual
         promedio_mensual = consumo_anual / 12.0 if consumos else 0
-
-        # Mostramos resultados y damos opción de armar presupuesto
         return render_template('consumo_resultado.html',
                                consumos=consumos,
                                consumo_anual=consumo_anual,
@@ -295,15 +618,16 @@ def consumo():
     else:
         return render_template('consumo.html')
 
-############################################
-# Ruta para armar el presupuesto manualmente
-############################################
+#################################
+# Ruta para armar el presupuesto a partir de consumos
+#################################
 @app.route('/armar_presupuesto', methods=['POST'])
 @login_required
 def armar_presupuesto():
     """
-    Muestra la pantalla donde el usuario elige manualmente
-    los productos por categoría, usando los datos de consumo.
+    Muestra una pantalla en la que, basándose en el consumo (anual y promedio),
+    el usuario puede seleccionar la opción más adecuada para cada una de las 7 categorías.
+    Luego se usará esa información para generar un informe técnico y presupuesto.
     """
     try:
         consumo_anual = float(request.form.get('consumo_anual', 0))
@@ -311,8 +635,6 @@ def armar_presupuesto():
     except:
         flash("No se encontraron datos de consumo. Ingresa nuevamente.", "warning")
         return redirect(url_for('consumo'))
-
-    # Agrupamos productos por tipo
     inversores = Product.query.filter_by(tipo='inversor').all()
     paneles = Product.query.filter_by(tipo='panel').all()
     protecciones_cc = Product.query.filter_by(tipo='protecciones_cc').all()
@@ -320,7 +642,6 @@ def armar_presupuesto():
     estructuras = Product.query.filter_by(tipo='estructura').all()
     cables = Product.query.filter_by(tipo='cable').all()
     fichas = Product.query.filter_by(tipo='fichas').all()
-
     return render_template('armar_presupuesto.html',
                            consumo_anual=consumo_anual,
                            promedio_mensual=promedio_mensual,
@@ -332,21 +653,18 @@ def armar_presupuesto():
                            cables=cables,
                            fichas=fichas)
 
+#################################
+# Ruta para generar el presupuesto (PDF)
+#################################
 @app.route('/generar_presupuesto', methods=['POST'])
 @login_required
 def generar_presupuesto():
-    """
-    Genera un PDF con los productos seleccionados manualmente
-    y muestra el consumo anual y promedio.
-    """
     try:
         consumo_anual = float(request.form.get('consumo_anual', 0))
         promedio_mensual = float(request.form.get('promedio_mensual', 0))
     except:
         flash("No se encontraron datos de consumo para generar PDF.", "warning")
         return redirect(url_for('consumo'))
-
-    # Recoger las selecciones del usuario
     seleccion_inversor_id = request.form.get('inversor')
     seleccion_panel_id = request.form.get('panel')
     seleccion_protecciones_cc_id = request.form.get('protecciones_cc')
@@ -354,8 +672,6 @@ def generar_presupuesto():
     seleccion_estructura_id = request.form.get('estructura')
     seleccion_cable_id = request.form.get('cable')
     seleccion_fichas_id = request.form.get('fichas')
-
-    # Cantidades (por defecto 1)
     qty_inversor = int(request.form.get('qty_inversor', 1))
     qty_panel = int(request.form.get('qty_panel', 1))
     qty_protecciones_cc = int(request.form.get('qty_protecciones_cc', 1))
@@ -363,14 +679,10 @@ def generar_presupuesto():
     qty_estructura = int(request.form.get('qty_estructura', 1))
     qty_cable = int(request.form.get('qty_cable', 1))
     qty_fichas = int(request.form.get('qty_fichas', 1))
-
-    # Función auxiliar para obtener producto por ID
     def get_product_by_id(pid):
         if pid and pid.isdigit():
             return Product.query.get(int(pid))
         return None
-
-    # Obtenemos productos seleccionados
     inversor = get_product_by_id(seleccion_inversor_id)
     panel = get_product_by_id(seleccion_panel_id)
     proteccion_cc = get_product_by_id(seleccion_protecciones_cc_id)
@@ -378,19 +690,14 @@ def generar_presupuesto():
     estructura = get_product_by_id(seleccion_estructura_id)
     cable = get_product_by_id(seleccion_cable_id)
     fichas = get_product_by_id(seleccion_fichas_id)
-
-    # Calcular costo total
     items_seleccionados = []
     costo_total = 0.0
-
     def agregar_item(producto, cantidad):
         nonlocal costo_total
         if producto and cantidad > 0:
             subtotal = producto.precio_final * cantidad
             items_seleccionados.append((producto, cantidad, subtotal))
             costo_total += subtotal
-
-    # Agregamos cada producto a la lista
     agregar_item(inversor, qty_inversor)
     agregar_item(panel, qty_panel)
     agregar_item(proteccion_cc, qty_protecciones_cc)
@@ -398,61 +705,41 @@ def generar_presupuesto():
     agregar_item(estructura, qty_estructura)
     agregar_item(cable, qty_cable)
     agregar_item(fichas, qty_fichas)
-
-    # Generamos PDF en memoria
-    pdf_buffer = generar_pdf_presupuesto(
-        consumo_anual=consumo_anual,
-        promedio_mensual=promedio_mensual,
-        items=items_seleccionados,
-        costo_total=costo_total
-    )
-
+    pdf_buffer = generar_pdf_presupuesto(consumo_anual, promedio_mensual, items_seleccionados, costo_total)
     return send_file(pdf_buffer,
                      as_attachment=True,
                      download_name='presupuesto_solar.pdf',
                      mimetype='application/pdf')
 
 #################################
-# Generación del PDF
+# Función para generar el PDF
 #################################
 def generar_pdf_presupuesto(consumo_anual, promedio_mensual, items, costo_total):
-    """
-    Genera un PDF en memoria con el resumen del presupuesto
-    usando la librería reportlab.
-    """
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=LETTER)
     c.setTitle("Presupuesto Manual de Instalación Solar")
-
     c.setFont("Helvetica-Bold", 16)
     c.drawString(50, 750, "Presupuesto Manual de Instalación Solar")
     c.setFont("Helvetica", 12)
-
     y = 700
     c.drawString(50, y, f"Consumo anual: {consumo_anual:.2f} kWh")
     y -= 20
     c.drawString(50, y, f"Promedio mensual: {promedio_mensual:.2f} kWh")
     y -= 40
-
     c.drawString(50, y, "Productos seleccionados:")
     y -= 20
-
     for prod, qty, subtotal in items:
-        texto = (f"{qty} x {prod.nombre} "
-                 f"(Tipo: {prod.tipo}, Código: {prod.codigo}) "
-                 f"Precio Final c/u: ${prod.precio_final:.2f}  "
-                 f"Subtotal: ${subtotal:.2f}")
+        texto = (f"{qty} x {prod.nombre} (Tipo: {prod.tipo}, Código: {prod.codigo}) "
+                 f"Precio Final c/u: ${prod.precio_final:.2f}  Subtotal: ${subtotal:.2f}")
         c.drawString(50, y, texto)
         y -= 20
-        if y < 100:  # Salto de página básico
+        if y < 100:
             c.showPage()
             c.setFont("Helvetica", 12)
             y = 700
-
     y -= 20
     c.setFont("Helvetica-Bold", 12)
     c.drawString(50, y, f"COSTO TOTAL: ${costo_total:.2f}")
-
     c.showPage()
     c.save()
     buffer.seek(0)

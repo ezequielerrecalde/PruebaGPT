@@ -1,133 +1,129 @@
 {% extends "base.html" %}
-{% block title %}Armar Presupuesto{% endblock %}
+{% block title %}Seleccionar Productos - Proyecto Solar{% endblock %}
 {% block content %}
-  <div class="mt-4">
-    <h2>Armar Presupuesto Manual</h2>
-    <div class="alert alert-info" role="alert">
-      <p class="mb-0">Consumo anual: <strong>{{ consumo_anual }} kWh</strong></p>
-      <p class="mb-0">Promedio mensual: <strong>{{ promedio_mensual }} kWh</strong></p>
-    </div>
-
-    <form action="{{ url_for('generar_presupuesto') }}" method="POST" class="row g-3">
-      <!-- Pasamos de nuevo el consumo para generar el PDF -->
-      <input type="hidden" name="consumo_anual" value="{{ consumo_anual }}">
-      <input type="hidden" name="promedio_mensual" value="{{ promedio_mensual }}">
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>1) Inversor</strong></label>
-        <select name="inversor" class="form-select">
-          <option value="">-- Seleccionar inversor --</option>
-          {% for p in inversores %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_inversor" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>2) Panel</strong></label>
-        <select name="panel" class="form-select">
-          <option value="">-- Seleccionar panel --</option>
-          {% for p in paneles %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_panel" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>3) Protecciones CC</strong></label>
-        <select name="protecciones_cc" class="form-select">
-          <option value="">-- Seleccionar protecciones CC --</option>
-          {% for p in protecciones_cc %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_protecciones_cc" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>4) Protecciones CA</strong></label>
-        <select name="protecciones_ca" class="form-select">
-          <option value="">-- Seleccionar protecciones CA --</option>
-          {% for p in protecciones_ca %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_protecciones_ca" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>5) Estructura</strong></label>
-        <select name="estructura" class="form-select">
-          <option value="">-- Seleccionar estructura --</option>
-          {% for p in estructuras %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_estructura" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>6) Cable</strong></label>
-        <select name="cable" class="form-select">
-          <option value="">-- Seleccionar cable --</option>
-          {% for p in cables %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_cable" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label"><strong>7) Fichas</strong></label>
-        <select name="fichas" class="form-select">
-          <option value="">-- Seleccionar fichas --</option>
-          {% for p in fichas %}
-          <option value="{{ p.id }}">
-            {{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Cantidad</label>
-        <input type="number" name="qty_fichas" value="1" min="1" class="form-control">
-      </div>
-
-      <div class="col-12 mt-3">
-        <button type="submit" class="btn btn-success">Generar PDF de Presupuesto</button>
-      </div>
-    </form>
+<div class="mt-4">
+  <h2>Seleccionar Productos Basados en su Consumo</h2>
+  
+  <div class="alert alert-info" role="alert">
+    <p><strong>Consumo anual:</strong> {{ consumo_anual }} kWh</p>
+    <p><strong>Promedio mensual:</strong> {{ promedio_mensual }} kWh</p>
   </div>
+  
+  <p>Basado en su consumo, seleccione las mejores opciones en cada categoría para generar el informe técnico y presupuesto.</p>
+  
+  <form action="{{ url_for('generar_presupuesto') }}" method="POST" class="row g-3">
+    <!-- Se envían los datos de consumo ocultos -->
+    <input type="hidden" name="consumo_anual" value="{{ consumo_anual }}">
+    <input type="hidden" name="promedio_mensual" value="{{ promedio_mensual }}">
+    
+    <!-- Categoría 1: Inversor -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>1) Inversor</strong></label>
+      <select name="inversor" class="form-select">
+        <option value="">-- Seleccionar Inversor --</option>
+        {% for p in inversores %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}, {{ p.codigo }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_inversor" value="1" min="1" class="form-control">
+    </div>
+    
+    <!-- Categoría 2: Panel -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>2) Panel</strong></label>
+      <select name="panel" class="form-select">
+        <option value="">-- Seleccionar Panel --</option>
+        {% for p in paneles %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_panel" value="1" min="1" class="form-control">
+    </div>
+    
+    <!-- Categoría 3: Protecciones CC -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>3) Protecciones CC</strong></label>
+      <select name="protecciones_cc" class="form-select">
+        <option value="">-- Seleccionar Protecciones CC --</option>
+        {% for p in protecciones_cc %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_protecciones_cc" value="1" min="1" class="form-control">
+    </div>
+    
+    <!-- Categoría 4: Protecciones CA -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>4) Protecciones CA</strong></label>
+      <select name="protecciones_ca" class="form-select">
+        <option value="">-- Seleccionar Protecciones CA --</option>
+        {% for p in protecciones_ca %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_protecciones_ca" value="1" min="1" class="form-control">
+    </div>
+    
+    <!-- Categoría 5: Estructura -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>5) Estructura</strong></label>
+      <select name="estructura" class="form-select">
+        <option value="">-- Seleccionar Estructura --</option>
+        {% for p in estructuras %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_estructura" value="1" min="1" class="form-control">
+    </div>
+    
+    <!-- Categoría 6: Cable -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>6) Cable</strong></label>
+      <select name="cable" class="form-select">
+        <option value="">-- Seleccionar Cable --</option>
+        {% for p in cables %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_cable" value="1" min="1" class="form-control">
+    </div>
+    
+    <!-- Categoría 7: Fichas -->
+    <div class="col-md-6">
+      <label class="form-label"><strong>7) Fichas</strong></label>
+      <select name="fichas" class="form-select">
+        <option value="">-- Seleccionar Fichas --</option>
+        {% for p in fichas %}
+          <option value="{{ p.id }}">{{ p.nombre }} ({{ p.marca }}) - ${{ p.precio_final|round(2) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Cantidad</label>
+      <input type="number" name="qty_fichas" value="1" min="1" class="form-control">
+    </div>
+    
+    <div class="col-12 mt-3">
+      <button type="submit" class="btn btn-success">Generar Informe Técnico y Presupuesto</button>
+    </div>
+  </form>
+</div>
 {% endblock %}
